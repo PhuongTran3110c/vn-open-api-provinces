@@ -508,7 +508,11 @@ wheels = [
 [[package]]
 name = "vietnam-provinces"
 version = "2025.8.1"
-source = { git = "https://github.com/sunshine-tech/VietnamProvinces.git?rev=4546c0c#4546c0c641bd03813222ac6aba4a7e75e11a2d0a" }
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/6e/969ed9123cf07851a562e159e1a23590130facd5fd90e499902d15b35f80/vietnam_provinces-2025.8.1.tar.gz", hash = "sha256:8402b9fd2f50c2ac755b57505a85b5bca54e4fa3df2ae78b4e2b6b77c754e9af", size = 221713 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/96/676145efa438291c7b0b089ca038a21e7b0a2d77246b804cfd4844ba3c66/vietnam_provinces-2025.8.1-py3-none-any.whl", hash = "sha256:05e2bc43a57a0e881c439d7c210f0e8036c5e5c2305ae9010ca896f75eaf44d1", size = 227820 },
+]
 
 [[package]]
 name = "vn-open-api-provinces"
@@ -552,7 +556,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "unidecode", specifier = ">=1.3.8" },
     { name = "uvicorn", specifier = ">=0.35.0" },
-    { name = "vietnam-provinces", git = "https://github.com/sunshine-tech/VietnamProvinces.git?rev=4546c0c" },
+    { name = "vietnam-provinces" },
 ]
 
 [package.metadata.requires-dev]
