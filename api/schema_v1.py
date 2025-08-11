@@ -2,7 +2,8 @@ from enum import Enum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
-from vietnam_provinces.base import VietNamDivisionType
+
+from .vendor.vietnam_provinces import VietNamDivisionType
 
 
 # The code here looks like a duplicate of vietnam_provinces.base, but unfortunately, we cannot subclass from
