@@ -85,5 +85,6 @@ show_error_codes = true
 module = [
   "logbook.*",
   "lunr.*",
+  "fast_enum.*",
 ]
 ignore_missing_imports = true
