@@ -1,4 +1,5 @@
 import os
+import re
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import asdict
 from operator import attrgetter
@@ -101,6 +102,82 @@ def get_ward(code: int) -> WardResponse:
     return WardResponse(**asdict(Ward.from_code(wcode)))
 
 
+@api_v2.get('/search/provinces')
+async def search_provinces(
+    q: str = Query(..., min_length=1, description='Search query for province names'),
+    limit: int = Query(10, ge=1, le=50, description='Maximum number of results to return')
+) -> tuple[ProvinceResponse, ...]:
+    """Search provinces by name with fuzzy matching support."""
+    provinces = sorted(Province.iter_all(), key=attrgetter('code'))
+    keywords = q.strip().lower().split()
+    
+    if keywords:
+        logger.info('Searching provinces by keywords: {}', keywords)
+        provinces = filter_provinces_by_keywords(provinces, keywords)
+    
+    # Limit results
+    limited_provinces = list(provinces)[:limit]
+    return tuple(ProvinceResponse(**asdict(p)) for p in limited_provinces)
+
+
+@api_v2.get('/search/wards')
+async def search_wards(
+    q: str = Query(..., min_length=1, description='Search query for ward names'),
+    province: int = Query(0, description='Filter by province code (0 for all provinces)'),
+    limit: int = Query(20, ge=1, le=100, description='Maximum number of results to return')
+) -> tuple[WardResponse, ...]:
+    """Search wards by name with optional province filtering."""
+    # Get wards based on province filter
+    if province:
+        try:
+            province_code = ProvinceCode(province)
+            wards = Ward.iter_by_province(province_code)
+        except ValueError:
+            raise HTTPException(400, detail=f'Invalid province code: {province}')
+    else:
+        wards = Ward.iter_all()
+    
+    # Convert to tuple for multiple iterations
+    wards_list = tuple(wards)
+    
+    # Filter by search keywords
+    keywords = q.strip().lower().split()
+    if keywords:
+        logger.info('Searching wards by keywords: {} (province: {})', keywords, province or 'all')
+        filtered_wards = filter_wards_by_keywords(wards_list, keywords)
+    else:
+        filtered_wards = wards_list
+    
+    # Limit results
+    limited_wards = list(filtered_wards)[:limit]
+    return tuple(WardResponse(**asdict(w)) for w in limited_wards)
+
+
+@api_v2.get('/search/all')
+async def search_all(
+    q: str = Query(..., min_length=1, description='Search query for provinces and wards'),
+    limit: int = Query(15, ge=1, le=50, description='Maximum number of results per type')
+) -> dict[str, tuple[ProvinceResponse | WardResponse, ...]]:
+    """Search both provinces and wards simultaneously."""
+    keywords = q.strip().lower().split()
+    logger.info('Searching all divisions by keywords: {}', keywords)
+    
+    # Search provinces
+    provinces = sorted(Province.iter_all(), key=attrgetter('code'))
+    filtered_provinces = filter_provinces_by_keywords(provinces, keywords)
+    limited_provinces = list(filtered_provinces)[:limit]
+    
+    # Search wards
+    wards = tuple(Ward.iter_all())
+    filtered_wards = filter_wards_by_keywords(wards, keywords)
+    limited_wards = list(filtered_wards)[:limit]
+    
+    return {
+        'provinces': tuple(ProvinceResponse(**asdict(p)) for p in limited_provinces),
+        'wards': tuple(WardResponse(**asdict(w)) for w in limited_wards)
+    }
+
+
 def filter_provinces_by_keywords(provinces: Sequence[Province], keywords: Iterable[str]):
     # Mapping of province code -> unaccent province
     unaccent_province_mapping = {p.code: unidecode(p.name).lower() for p in provinces}
@@ -123,3 +200,105 @@ def filter_wards_by_keywords(wards: Sequence[Ward], keywords: Iterable[str]) -> 
         return all(word in name for word in unaccent_keywords)
 
     return filter(is_name_matched, wards)
+
+
+@api_v2.get('/parse-address')
+async def parse_address(address: str = Query(..., description='Full address string to parse (2-level structure)')):
+    """
+    Parse Vietnamese address string into structured components (Province -> Ward only).
+    
+    API v2 uses 2-level structure: Province and Ward (no District level).
+    
+    Example inputs:
+    - "456 haha, Xã Quang Trọng, Tỉnh Cao Bằng"
+    - "Tỉnh Cao Bằng"
+    - "Xã Quang Trọng, Cao Bằng"
+    
+    Returns structured address with codes for province, ward and street.
+    """
+    logger.info('Parsing address (v2): {}', address)
+    
+    # Split by comma and clean up
+    parts = [p.strip() for p in address.split(',')]
+    
+    result = {
+        'province': None,
+        'province_code': None,
+        'ward': None,
+        'ward_code': None,
+        'street': None
+    }
+    
+    # Find province (usually last or mentioned with "Tỉnh/Thành phố")
+    province_found = None
+    for part in reversed(parts):
+        for province in Province.iter_all():
+            # Check if province name matches (with or without prefix)
+            part_normalized = unidecode(part.lower())
+            province_normalized = unidecode(province.name.lower())
+            
+            # Remove common prefixes for matching
+            part_clean = re.sub(r'^(tinh|thanh pho|tp\.?)\s+', '', part_normalized)
+            province_clean = re.sub(r'^(tinh|thanh pho|tp\.?)\s+', '', province_normalized)
+            
+            if part_clean in province_clean or province_clean in part_clean:
+                province_found = province
+                result['province'] = province.name
+                result['province_code'] = province.code
+                break
+        if province_found:
+            break
+    
+    if not province_found:
+        # Try partial matching
+        for part in reversed(parts):
+            part_normalized = unidecode(part.lower()).strip()
+            for province in Province.iter_all():
+                province_name_simple = unidecode(province.name.lower())
+                # Check if significant part of province name is in the input
+                if len(part_normalized) >= 3 and part_normalized in province_name_simple:
+                    province_found = province
+                    result['province'] = province.name
+                    result['province_code'] = province.code
+                    break
+            if province_found:
+                break
+    
+    # Find ward if province found
+    if province_found:
+        province_code = ProvinceCode(province_found.code)
+        wards = list(Ward.iter_by_province(province_code))
+        
+        for part in parts:
+            for ward in wards:
+                part_normalized = unidecode(part.lower())
+                ward_normalized = unidecode(ward.name.lower())
+                
+                # Remove common prefixes
+                part_clean = re.sub(r'^(phuong|xa|thi tran|tt\.?)\s+', '', part_normalized)
+                ward_clean = re.sub(r'^(phuong|xa|thi tran|tt\.?)\s+', '', ward_normalized)
+                
+                if part_clean in ward_clean or ward_clean in part_clean:
+                    result['ward'] = ward.name
+                    result['ward_code'] = ward.code
+                    break
+            if result['ward']:
+                break
+    
+    # Extract street (first part that doesn't match any division)
+    for part in parts:
+        part_normalized = unidecode(part.lower())
+        is_division = False
+        
+        # Check if this part matches any found division
+        for key in ['province', 'ward']:
+            if result[key] and part_normalized in unidecode(result[key].lower()):
+                is_division = True
+                break
+        
+        if not is_division and part.strip():
+            # This might be street/building number
+            result['street'] = part.strip()
+            break
+    
+    return result

@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+    vn-provinces-api:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: vn-provinces-api
+        restart: unless-stopped
+        ports:
+            - "8000:8000"
+        environment:
+            # Có thể thêm environment variables ở đây
+            - BLACKLISTED_CLIENTS=
+            - TRACKING=false
+            - CDN_CACHE_INTERVAL=30
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+        # Nếu muốn persist logs
+        volumes:
+            - ./logs:/app/logs
+        # Resource limits (tùy chọn)
+        deploy:
+            resources:
+                limits:
+                    cpus: "1.0"
+                    memory: 512M
+                reservations:
+                    cpus: "0.5"
+                    memory: 256M
+        networks:
+            - vn-provinces-network
+
+networks:
+    vn-provinces-network:
+        driver: bridge

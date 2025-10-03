@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+    vn-provinces-api:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: vn-provinces-api-prod
+        restart: always
+        ports:
+            - "8000:8000"
+        environment:
+            - BLACKLISTED_CLIENTS=${BLACKLISTED_CLIENTS:-}
+            - TRACKING=${TRACKING:-false}
+            - CDN_CACHE_INTERVAL=${CDN_CACHE_INTERVAL:-30}
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+        volumes:
+            - ./logs:/app/logs
+        deploy:
+            resources:
+                limits:
+                    cpus: "2.0"
+                    memory: 1G
+                reservations:
+                    cpus: "1.0"
+                    memory: 512M
+        networks:
+            - vn-provinces-network
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    # Nginx reverse proxy (optional - uncomment to use)
+    # nginx:
+    #   image: nginx:alpine
+    #   container_name: vn-provinces-nginx
+    #   restart: always
+    #   ports:
+    #     - "80:80"
+    #     - "443:443"
+    #   volumes:
+    #     - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    #     - ./ssl:/etc/nginx/ssl:ro
+    #   depends_on:
+    #     - vn-provinces-api
+    #   networks:
+    #     - vn-provinces-network
+
+networks:
+    vn-provinces-network:
+        driver: bridge
