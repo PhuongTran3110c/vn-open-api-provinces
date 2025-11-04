@@ -3,6 +3,7 @@ import sys
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from logbook import Logger, StreamHandler
 from logbook.more import ColorizedStderrHandler
@@ -30,6 +31,16 @@ app = FastAPI(
     title='Vietnam Provinces online API',
     version=__version__,
 )
+
+# Configure CORS - Allow all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
+
 settings = Settings()
 app.mount('/api/v1', api_v1)
 app.mount('/api/v2', api_v2)
